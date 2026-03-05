@@ -25,13 +25,11 @@ const decrypt = data => {
   const iv = CryptoJS.enc.Hex.parse(data.slice(0, 32));
   const encryptedData = data.slice(32, -32);
   const secret = CryptoJS.enc.Utf8.parse(data.slice(-32));
-
   const bytes = CryptoJS.AES.decrypt(encryptedData, secret, {
     iv,
     mode: CryptoJS.mode.CBC,
     format: CryptoJS.format.Hex,
   });
-
   return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
 };
 
@@ -55,11 +53,8 @@ const validate = async (params) => {
   }
 
   await schema.validate(params);
-
   const data = schema.cast(params);
-
   const types = [...new Set(data.types)].map(type => FUND_TYPES[type]);
-
   const { by, period = '' } = SORTS[data.sort_by];
 
   return {
@@ -78,37 +73,47 @@ const validate = async (params) => {
 
 const getData = async (params = {}) => {
   const parsedParams = await validate(params);
-
   try {
     const response = await axios.request({
       method: 'GET',
       url: 'https://api.bibit.id/products/list',
       headers: {
-        Accept: 'application/json',
-        'Accept-Encoding': 'gzip',
-        Pragma: 'no-cache',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; Win64; x64; rv:47.0) Gecko/20100101 Firefox/47.0',
-        Origin: 'https://bibit.id',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Host': 'api.bibit.id',
+        'Origin': 'https://bibit.id',
+        'Pragma': 'no-cache',
+        'Referer': 'https://bibit.id/',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-site',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        'sec-ch-ua-mobile': '?0',
+        'sec-ch-ua-platform': '"Windows"',
       },
       params: parsedParams,
     });
-
     return decrypt(response.data.data);
   } catch (error) {
     const message = error.response ? error.response.data.message : error.message;
-
     throw new Error(message);
   }
 };
 
 module.exports = async (req, res) => {
+  // Allow CORS
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET');
+
   try {
     const data = await getData(req.query);
-
     return res.json({ data });
   } catch (error) {
     const status = error.name === 'ValidationError' ? 422 : 500;
-
     return res.status(status).json({ error: error.message });
   }
 };
