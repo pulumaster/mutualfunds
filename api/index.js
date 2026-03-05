@@ -1,25 +1,5 @@
 const axios = require('axios');
 const CryptoJS = require('crypto-js');
-const yup = require('yup');
-
-const FUND_TYPES = {
-  equity: 1,
-  balanced: 0,
-  fixed_income: 2,
-  money_market: 3,
-};
-
-const SORTS = {
-  name: { by: 7 },
-  return_1d: { by: 5, period: '1d' },
-  return_1m: { by: 5, period: '1m' },
-  return_1y: { by: 5, period: '1y' },
-  return_3y: { by: 5, period: '3y' },
-  return_5y: { by: 5, period: '5y' },
-  return_ytd: { by: 5, period: 'ytd' },
-  drawdown_1y: { by: 4 },
-  aum: { by: 2 },
-};
 
 const decrypt = data => {
   const iv = CryptoJS.enc.Hex.parse(data.slice(0, 32));
@@ -33,87 +13,33 @@ const decrypt = data => {
   return JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
 };
 
-const validate = async (params) => {
-  const schema = yup.object().shape({
-    search: yup.string().trim().default(''),
-    page: yup.number().positive().integer().default(1),
-    per_page: yup.number().positive().integer().default(25),
-    buy_from_bibit: yup.boolean().default(false),
-    types: yup.array(
-      yup.string().trim().lowercase().oneOf(Object.keys(FUND_TYPES))
-    ).default([]),
-    sharia: yup.boolean().default(false),
-    usd: yup.boolean().default(false),
-    sort_by: yup.string().trim().lowercase().oneOf(Object.keys(SORTS)).default('name'),
-    sort_direction: yup.string().trim().lowercase().oneOf(['asc', 'desc']).default('asc'),
-  });
+module.exports = async (req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
 
-  if (typeof params.types === 'string') {
-    params.types = params.types.split(',');
-  }
+  const id = req.query.id || 'RD1548';
 
-  await schema.validate(params);
-  const data = schema.cast(params);
-  const types = [...new Set(data.types)].map(type => FUND_TYPES[type]);
-  const { by, period = '' } = SORTS[data.sort_by];
-
-  return {
-    name: data.search,
-    page: data.page,
-    limit: data.per_page,
-    tradable: data.buy_from_bibit ? 1 : '',
-    type: types.join(','),
-    syariah: data.sharia ? 1 : '',
-    usd: data.usd ? 1 : '',
-    sort: data.sort_direction,
-    sort_by: by,
-    sort_period: period,
-  };
-};
-
-const getData = async (params = {}) => {
-  const parsedParams = await validate(params);
   try {
-    const response = await axios.request({
-      method: 'GET',
-      url: 'https://api.bibit.id/products/list',
+    const response = await axios.get(`https://api.bibit.id/products/${id}`, {
       headers: {
         'Accept': 'application/json, text/plain, */*',
-        'Accept-Encoding': 'gzip, deflate, br',
         'Accept-Language': 'en-US,en;q=0.9,id;q=0.8',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'Host': 'api.bibit.id',
         'Origin': 'https://bibit.id',
-        'Pragma': 'no-cache',
         'Referer': 'https://bibit.id/',
-        'Sec-Fetch-Dest': 'empty',
-        'Sec-Fetch-Mode': 'cors',
-        'Sec-Fetch-Site': 'same-site',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'sec-ch-ua': '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
       },
-      params: parsedParams,
     });
-    return decrypt(response.data.data);
-  } catch (error) {
-    const message = error.response ? error.response.data.message : error.message;
-    throw new Error(message);
-  }
-};
 
-module.exports = async (req, res) => {
-  // Allow CORS
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET');
+    const decrypted = decrypt(response.data.data);
 
-  try {
-    const data = await getData(req.query);
-    return res.json({ data });
+    return res.json({
+      name: decrypted.name,
+      nav: decrypted.nav,
+      nav_date: decrypted.nav_date,
+      return_1y: decrypted.return_1y,
+    });
+
   } catch (error) {
-    const status = error.name === 'ValidationError' ? 422 : 500;
-    return res.status(status).json({ error: error.message });
+    const message = error.response ? JSON.stringify(error.response.data) : error.message;
+    return res.status(500).json({ error: message });
   }
 };
